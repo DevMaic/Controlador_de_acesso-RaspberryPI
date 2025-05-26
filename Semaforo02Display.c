@@ -17,10 +17,13 @@
 #define BOTAO_B 6 // BOOTSEL
 #define MAX_PERSONS 10 // Número máximo de pessoas
 
-ssd1306_t ssd;
 SemaphoreHandle_t xSemaphorContadorIn;
 SemaphoreHandle_t xSemaphorContadorOut;
+SemaphoreHandle_t xSemaphorBinaryReset;
+
+ssd1306_t ssd;
 SemaphoreHandle_t xMutexSem;
+
 int totalPersons = 0;
 char buffer[32];
 int lastTime = 0; // Variável para armazenar o tempo do último evento
@@ -62,26 +65,23 @@ void vOutTask(void *params) {
     }
 }
 
-TaskHandle_t xResetTaskHandle = NULL;
-
 void vResetTask(void *params) {
     while (true) {
-        // Espera uma notificação para executar o reset
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if(xSemaphoreTake(xSemaphorBinaryReset, portMAX_DELAY) == pdTRUE) {
+            // Zera os semáforos manualmente
+            while(xSemaphoreTake(xSemaphorContadorIn, 0) == pdTRUE);
+            while(xSemaphoreTake(xSemaphorContadorOut, 0) == pdTRUE);
 
-        // Zera os semáforos manualmente
-        while(xSemaphoreTake(xSemaphorContadorIn, 0) == pdTRUE);
-        while(xSemaphoreTake(xSemaphorContadorOut, 0) == pdTRUE);
+            // Reseta o contador
+            totalPersons = 0;
 
-        // Reseta o contador
-        totalPersons = 0;
+            ssd1306_draw_string(&ssd, "               ", 5, 44);
+            sprintf(buffer, "Eventos: %d", totalPersons);
+            ssd1306_draw_string(&ssd, buffer, 5, 44);
+            ssd1306_send_data(&ssd);
 
-        ssd1306_draw_string(&ssd, "               ", 5, 44);
-        sprintf(buffer, "Eventos: %d", totalPersons);
-        ssd1306_draw_string(&ssd, buffer, 5, 44);
-        ssd1306_send_data(&ssd);
-
-        printf("Reset executado com sucesso\n");
+            printf("Reset executado com sucesso\n");
+        }
     }
 }
 
@@ -100,13 +100,13 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
                 xSemaphoreGiveFromISR(xSemaphorContadorOut, &xHigherPriorityTaskWoken);
             }
             printf("%d\n", uxSemaphoreGetCount(xSemaphorContadorOut)); // Exibe a contagem do semáforo
-        } else if(gpio == 22) {
-            vTaskNotifyGiveFromISR(xResetTaskHandle, &xHigherPriorityTaskWoken);
+        } else if(gpio == 22) {                  // Incializa com pdFALSE
+            xSemaphoreGiveFromISR(xSemaphorBinaryReset, &xHigherPriorityTaskWoken); // Libera o semáforo de reset
         }
         lastTime = currentTime; // Atualiza o tempo do último evento
     }
 
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // Troca o contexto da tarefa se necessário
 }
 
 int main() {
@@ -142,12 +142,13 @@ int main() {
     // Cria semáforo de contagem (máximo 10, inicial 0)
     xSemaphorContadorIn = xSemaphoreCreateCounting(10, 0);
     xSemaphorContadorOut = xSemaphoreCreateCounting(10, 0);
+    xSemaphorBinaryReset = xSemaphoreCreateBinary();
     xMutexSem = xSemaphoreCreateMutex();
 
     // Cria tarefas
     xTaskCreate(vInTask, "InTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vOutTask, "OutTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, &xResetTaskHandle);
+    xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
 
     vTaskStartScheduler();
