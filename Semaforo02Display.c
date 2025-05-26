@@ -24,6 +24,7 @@ SemaphoreHandle_t xMutexSem;
 int totalPersons = 0;
 char buffer[32];
 int lastTime = 0; // Variável para armazenar o tempo do último evento
+bool resetContador = false; // Variável para controle de reset
 
 void vInTask(void *params) {
     while (true) {
@@ -61,16 +62,28 @@ void vOutTask(void *params) {
     }
 }
 
-// // void vResetTask(void *params) {
-// //     while (true) {
-// //         // Aguarda mutex
-// //         if (xSemaphoreTake(xMutexSem, portMAX_DELAY) == pdTRUE) {
-            
-// //         }
+TaskHandle_t xResetTaskHandle = NULL;
 
-// //         vTaskDelay(1); // Aguarda 1 tick
-// //     }
-// // }
+void vResetTask(void *params) {
+    while (true) {
+        // Espera uma notificação para executar o reset
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        // Zera os semáforos manualmente
+        while(xSemaphoreTake(xSemaphorContadorIn, 0) == pdTRUE);
+        while(xSemaphoreTake(xSemaphorContadorOut, 0) == pdTRUE);
+
+        // Reseta o contador
+        totalPersons = 0;
+
+        ssd1306_draw_string(&ssd, "               ", 5, 44);
+        sprintf(buffer, "Eventos: %d", totalPersons);
+        ssd1306_draw_string(&ssd, buffer, 5, 44);
+        ssd1306_send_data(&ssd);
+
+        printf("Reset executado com sucesso\n");
+    }
+}
 
 void gpio_irq_handler(uint gpio, uint32_t events) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -88,7 +101,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
             }
             printf("%d\n", uxSemaphoreGetCount(xSemaphorContadorOut)); // Exibe a contagem do semáforo
         } else if(gpio == 22) {
-            reset_usb_boot(0, 0); // BOOTSEL
+            vTaskNotifyGiveFromISR(xResetTaskHandle, &xHigherPriorityTaskWoken);
         }
         lastTime = currentTime; // Atualiza o tempo do último evento
     }
@@ -134,7 +147,8 @@ int main() {
     // Cria tarefas
     xTaskCreate(vInTask, "InTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vOutTask, "OutTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-    // xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, &xResetTaskHandle);
+
 
     vTaskStartScheduler();
     panic_unsupported();
