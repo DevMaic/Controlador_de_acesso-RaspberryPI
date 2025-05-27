@@ -1,4 +1,6 @@
 #include "pico/stdlib.h"
+#include "hardware/clocks.h"
+#include "hardware/pwm.h"
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "lib/ssd1306.h"
@@ -27,6 +29,10 @@ SemaphoreHandle_t xMutexSem;
 int totalPersons = 0;
 char buffer[32];
 int lastTime = 0; // Variável para armazenar o tempo do último evento
+bool buzzerState = false; // Estado do buzzer
+bool buzzerState1 = false; // Estado do buzzer para o limite máximo de pessoas
+bool maxLimitBeeped = false;
+bool zeroBeeped = false;
 
 void vInTask(void *params) {
     while (true) {
@@ -34,12 +40,25 @@ void vInTask(void *params) {
         if(xSemaphoreTake(xSemaphorContadorIn, portMAX_DELAY) == pdTRUE) {
             if (xSemaphoreTake(xMutexSem, portMAX_DELAY) == pdTRUE) {
                 totalPersons++;
-                ssd1306_draw_string(&ssd, "               ", 5, 44);
-                ssd1306_send_data(&ssd);
-                sprintf(buffer, "Eventos: %d", totalPersons);
-                ssd1306_draw_string(&ssd, buffer, 5, 44);
+                ssd1306_fill(&ssd, false); // Limpa o display
+                ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
+                ssd1306_line(&ssd, 3, 37, 123, 37, true);           // Desenha uma linha
+                ssd1306_draw_string(&ssd, "", 8, 6); // Desenha uma string
+                ssd1306_draw_string(&ssd, "", 20, 16);  // Desenha uma string
+                sprintf(buffer, "Usuarios: %d", totalPersons);
+                ssd1306_draw_string(&ssd, buffer, 10, 18);  // Desenha uma string
+                sprintf(buffer, "Vagas: %d", (MAX_PERSONS-totalPersons));
+                ssd1306_draw_string(&ssd, buffer, 10, 45);    // Desenha uma string
                 ssd1306_send_data(&ssd);
                 vTaskDelay(pdMS_TO_TICKS(1000)); // Aguarda 1 tick
+                if (totalPersons == MAX_PERSONS && !maxLimitBeeped) {
+                    buzzerState1 = true;
+                    maxLimitBeeped = true;
+                }
+                if (totalPersons < MAX_PERSONS) {
+                    maxLimitBeeped = false; // libera para tocar de novo futuramente
+                }
+
                 xSemaphoreGive(xMutexSem); // Libera o mutex para outras tarefas
             }
         }
@@ -52,12 +71,26 @@ void vOutTask(void *params) {
         if(xSemaphoreTake(xSemaphorContadorOut, portMAX_DELAY) == pdTRUE) {
             if(xSemaphoreTake(xMutexSem, portMAX_DELAY) == pdTRUE) {
                 totalPersons--;
-                ssd1306_draw_string(&ssd, "               ", 5, 44);
-                ssd1306_send_data(&ssd);
-                sprintf(buffer, "Eventos: %d", totalPersons);
-                ssd1306_draw_string(&ssd, buffer, 5, 44);
+                ssd1306_fill(&ssd, false); // Limpa o display
+                ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
+                ssd1306_line(&ssd, 3, 37, 123, 37, true);           // Desenha uma linha
+                ssd1306_draw_string(&ssd, "", 8, 6); // Desenha uma string
+                ssd1306_draw_string(&ssd, "", 20, 16);  // Desenha uma string
+                sprintf(buffer, "Usuarios: %d", totalPersons);
+                ssd1306_draw_string(&ssd, buffer, 10, 18);  // Desenha uma string
+                sprintf(buffer, "Vagas: %d", (MAX_PERSONS-totalPersons));
+                ssd1306_draw_string(&ssd, buffer, 10, 45);    // Desenha uma string
                 ssd1306_send_data(&ssd);
                 vTaskDelay(pdMS_TO_TICKS(1000)); // Aguarda 1 tick
+
+                if (totalPersons == 0 && !zeroBeeped) {
+                    buzzerState = true;
+                    zeroBeeped = true;
+                }
+                if (totalPersons > 0) {
+                    zeroBeeped = false; // libera para tocar de novo futuramente
+                }
+
                 xSemaphoreGive(xMutexSem); // Libera o mutex para outras tarefas
             }
         }
@@ -74,10 +107,16 @@ void vResetTask(void *params) {
             // Reseta o contador
             totalPersons = 0;
 
-            ssd1306_draw_string(&ssd, "               ", 5, 44);
-            sprintf(buffer, "Eventos: %d", totalPersons);
-            ssd1306_draw_string(&ssd, buffer, 5, 44);
-            ssd1306_send_data(&ssd);
+            ssd1306_fill(&ssd, false); // Limpa o display
+            ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);      // Desenha um retângulo
+            ssd1306_line(&ssd, 3, 37, 123, 37, true);           // Desenha uma linha
+            ssd1306_draw_string(&ssd, "", 8, 6); // Desenha uma string
+            ssd1306_draw_string(&ssd, "", 20, 16);  // Desenha uma string
+            sprintf(buffer, "Usuarios: %d", totalPersons);
+            ssd1306_draw_string(&ssd, buffer, 10, 18);  // Desenha uma string
+            sprintf(buffer, "Vagas: %d", (MAX_PERSONS-totalPersons));
+            ssd1306_draw_string(&ssd, buffer, 10, 45);    // Desenha uma string
+            ssd1306_send_data(&ssd);   
 
             printf("Reset executado com sucesso\n");
         }
@@ -113,7 +152,7 @@ void vLedTask() {
         if(totalPersons == 0) {
             gpio_put(11, false);
             gpio_put(12, true);
-            gpio_put(13, false); 
+            gpio_put(13, false);
         } else if(totalPersons > 0 && totalPersons <= MAX_PERSONS-2) {
             gpio_put(11, true); // Desliga o LED se não houver pessoas
             gpio_put(12, false); // Desliga o LED azul
@@ -128,6 +167,49 @@ void vLedTask() {
             gpio_put(13, true); // Liga o LED se houver pessoas
         }
         vTaskDelay(1); // Aguarda 100 ms antes de verificar novamente
+    }
+}
+
+void tocar_buzzer(uint slice, uint wrap, int repeticoes, int duracao_ms, int pausa_ms) {
+    for (int i = 0; i < repeticoes; i++) {
+        gpio_set_function(21, GPIO_FUNC_PWM);
+        pwm_set_wrap(slice, wrap);
+        pwm_set_chan_level(slice, pwm_gpio_to_channel(21), wrap / 8); // 12,5%
+        pwm_set_enabled(slice, true);
+        vTaskDelay(pdMS_TO_TICKS(duracao_ms));
+
+        pwm_set_enabled(slice, false);
+        gpio_set_function(21, GPIO_FUNC_SIO);
+        gpio_set_dir(21, GPIO_OUT);
+        gpio_put(21, 0);
+        vTaskDelay(pdMS_TO_TICKS(pausa_ms));
+    }
+}
+
+void vBuzzerTask(void *params) {
+    const uint slice_num = pwm_gpio_to_slice_num(21);
+    const uint32_t clock = clock_get_hz(clk_sys);
+    const uint32_t freq = 2000;
+    const uint32_t divider16 = (clock << 4) / freq;
+    const uint32_t wrap = (divider16 + (1 << 4) - 1) >> 4;
+
+    gpio_set_function(21, GPIO_FUNC_PWM);
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 4.0f);
+    pwm_init(slice_num, &config, false);
+
+    while (true) {
+        if (buzzerState) {
+            tocar_buzzer(slice_num, wrap, 2, 50, 50);
+            buzzerState = false;
+        }
+
+        if (buzzerState1) {
+            tocar_buzzer(slice_num, wrap, 1, 50, 0);
+            buzzerState1 = false;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -177,11 +259,24 @@ int main() {
     xSemaphorBinaryReset = xSemaphoreCreateBinary();
     xMutexSem = xSemaphoreCreateMutex();
 
+    bool cor = true;
+
+    ssd1306_fill(&ssd, !cor);                          // Limpa o display
+
+    ssd1306_rect(&ssd, 3, 3, 122, 60, cor, !cor);      // Desenha um retângulo
+    ssd1306_line(&ssd, 3, 37, 123, 37, cor);           // Desenha uma linha
+    ssd1306_draw_string(&ssd, "", 8, 6); // Desenha uma string
+    ssd1306_draw_string(&ssd, "", 20, 16);  // Desenha uma string
+    ssd1306_draw_string(&ssd, "Usuarios: 0", 10, 18);  // Desenha uma string
+    ssd1306_draw_string(&ssd, "Vagas: 10", 10, 45);    // Desenha uma string
+    ssd1306_send_data(&ssd);                           // Atualiza o display
+
     // Cria tarefas
     xTaskCreate(vInTask, "InTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vOutTask, "OutTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vLedTask, "LedTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
+    xTaskCreate(vBuzzerTask, "BuzzerTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
