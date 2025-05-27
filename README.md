@@ -1,30 +1,42 @@
-Utilização do FreeRTOS
+<h1>
+  <p align="center" width="100%">
+    <img width="30%" src="https://softex.br/wp-content/uploads/2024/09/EmbarcaTech_logo_Azul-1030x428.png">
+  </p>
+</h1>
 
-Exemplo semáforo de Contagem com Display OLED.
+# ✨Tecnologias
+Esse projeto foi desenvolvido com as seguintes tecnologias.
+- Placa Raspberry Pi Pico W
+- Raspberry Pi Pico SDK
+- C/C++
 
-Este programa exemplifica o uso de um semáforo de contagem (counting semaphore) no FreeRTOS, aplicado na placa BitDogLab. O sistema também utiliza um display OLED SSD1306 via I2C para exibir mensagens ao usuário.
+# 💻Projeto
+Projeto Desenvolvido durante a residência em microcontrolados e sistemas embarcados para estudantes de nível superior ofertado pela CEPEDI e SOFTEX, polo Juazeiro-BA, na Universidade Federal do Vale do São Francisco (UNIVASF), que tem como objetivo ser um sistema de controle de acesso utilizando a placa BitDogLab com Raspberry PI-Pico.
 
-Objetivo
-Registrar e processar múltiplos eventos gerados pelo botão A (GPIO 5).
-Cada vez que o botão é pressionado, o programa contabiliza o evento e atualiza o display com o total de eventos processados, mesmo que várias pressões ocorram em sequência rápida.
+# 🚀Como rodar
+### **Softwares Necessários**
+1. **VS Code** com a extensão **Raspberry Pi Pico** instalada.
+2. **CMake** e **Ninja** configurados.
+3. **SDK do Raspberry Pi Pico** corretamente configurado.
 
-O Display OLED SSD1306: exibe mensagens e o número de eventos.
+### **Clonando o Repositório**
+Para começar, clone o repositório no seu computador:
+```bash
+git clone https://github.com/DevMaic/Controlador_de_acesso-RaspberryPI
+cd Controlador_de_acesso-RaspberryPI
+```
+---
 
-Semáforo de contagem: controla a fila de eventos aguardando processamento.
 
-Tarefa única (vContadorTask): consome os eventos e atualiza o display.
-
-Funcionamento do Programa:
-O sistema inicializa e exibe: "Aguardando evento..." no display.
-Quando o botão A (GPIO 5) é pressionado a ISR é acionada.
-O semáforo de contagem é incrementado com xSemaphoreGiveFromISR().
-O semáforo pode acumular vários eventos consecutivos (até o limite definido, nete caso 10).
-
-A tarefa vContadorTask fica bloqueada em xSemaphoreTake(...) até que um evento esteja disponível.
-
-Ao receber o semáforo, incrementa a variável eventosProcessados. Exibe no display Evento recebido! Eventos: N
-Aguarda 1.5 segundos simulando tempo de processamento.
-
-Retorna à mensagem "Aguardando evento...".
-
-Neste exemplo, o semáforo de contagem captura todos os pulsos, inclusive os gerados por bounce mecânico do botão A. Isso evidencia o efeito do rebote e mostra a importância de implementar algum tipo de tratamento. 
+### **Execução na Placa BitDogLab**
+#### **1. Upload de Arquivo `PiscaLed.uf2`**
+1. Importe o projeto utilizando a extensão do VSCode, e o compile.
+2. Abra a pasta `build` que será gerada na compilação.
+3. Aperte o botão **BOOTSEL** no microcontrolador Raspberry Pi Pico W.
+4. Ao mesmo tempo, aperte o botão de **Reset**..
+5. Mova o arquivo `PiscaLed.uf2` para a placa de desenvolvimento.
+#### **2. Acompanhar Execução do Programa**
+1. Assim que o código estiver na placa, observe a contagem de usuários e vagas disponíveis no display.
+2. Pressione os botões A e B da placa, para adicionar e remover usuários.
+3. Observe também o código de cores pra o número de vagas nos LEDs RGB.
+   
