@@ -27,7 +27,6 @@ SemaphoreHandle_t xMutexSem;
 int totalPersons = 0;
 char buffer[32];
 int lastTime = 0; // Variável para armazenar o tempo do último evento
-bool resetContador = false; // Variável para controle de reset
 
 void vInTask(void *params) {
     while (true) {
@@ -109,6 +108,35 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken); // Troca o contexto da tarefa se necessário
 }
 
+void vLedTask() {
+    while (true) {
+        if(totalPersons == 0) {
+            gpio_put(11, false);
+            gpio_put(12, true);
+            gpio_put(13, false); 
+        } else if(totalPersons > 0 && totalPersons <= MAX_PERSONS-2) {
+            gpio_put(11, true); // Desliga o LED se não houver pessoas
+            gpio_put(12, false); // Desliga o LED azul
+            gpio_put(13, false); // Liga o LED vermelho se houver pessoas
+        } else if(totalPersons == MAX_PERSONS-1) {
+            gpio_put(11, true); // Desliga o LED se não houver pessoas
+            gpio_put(12, false); // Desliga o LED azul
+            gpio_put(13, true); // Liga o LED se houver pessoas
+        } else {
+            gpio_put(11, false); // Desliga o LED verde se houver pessoas
+            gpio_put(12, false); // Desliga o LED azul se houver pessoas
+            gpio_put(13, true); // Liga o LED se houver pessoas
+        }
+        vTaskDelay(1); // Aguarda 100 ms antes de verificar novamente
+    }
+}
+
+void gpioInit(int led) {
+    gpio_init(led);
+    gpio_set_dir(led, GPIO_OUT);
+    gpio_put(led, false); // Desliga o LED inicialmente
+}
+
 int main() {
     stdio_init_all();
 
@@ -135,6 +163,10 @@ int main() {
     gpio_set_dir(22, GPIO_IN);
     gpio_pull_up(22);
 
+    gpioInit(11); // LED verde
+    gpioInit(12); // LED azul
+    gpioInit(13); // LED vermelho
+
     gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
     gpio_set_irq_enabled(BOTAO_B, GPIO_IRQ_EDGE_FALL, true);
     gpio_set_irq_enabled(22     , GPIO_IRQ_EDGE_FALL, true);
@@ -149,7 +181,7 @@ int main() {
     xTaskCreate(vInTask, "InTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vOutTask, "OutTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
     xTaskCreate(vResetTask, "ResetTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
-
+    xTaskCreate(vLedTask, "LedTask", configMINIMAL_STACK_SIZE + 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
     panic_unsupported();
